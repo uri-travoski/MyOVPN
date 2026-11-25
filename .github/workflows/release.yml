@@ -43,12 +43,14 @@ jobs:
             goarch: amd64
             deb_arch: amd64
             rpm_arch: x86_64
+            nfpm_arch: x86_64
             appimage_arch: x86_64
             flatpak_arch: x86_64
           - runner: ubuntu-24.04-arm
             goarch: arm64
             deb_arch: arm64
             rpm_arch: aarch64
+            nfpm_arch: arm64
             appimage_arch: aarch64
             flatpak_arch: aarch64
     runs-on: ${{ matrix.runner }}
@@ -63,7 +65,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y curl rpm flatpak flatpak-builder desktop-file-utils
           NFPM_VER="2.41.1"
-          curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VER}/nfpm_${NFPM_VER}_Linux_${{ matrix.appimage_arch }}.tar.gz" | sudo tar -xz -C /usr/local/bin nfpm
+          curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VER}/nfpm_${NFPM_VER}_Linux_${{ matrix.nfpm_arch }}.tar.gz" | sudo tar -xz -C /usr/local/bin nfpm
           curl -fsSL "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${{ matrix.appimage_arch }}.AppImage" -o /tmp/appimagetool
           chmod +x /tmp/appimagetool
           sudo mv /tmp/appimagetool /usr/local/bin/appimagetool
@@ -89,8 +91,8 @@ jobs:
         env:
           VERSION: ${{ needs.meta.outputs.version }}
         run: |
-          docker run --rm -v "$PWD/dist:/pkg" debian:trixie-slim bash -c "dpkg-deb -I /pkg/myovpn_${VERSION}_${{ matrix.deb_arch }}.deb && dpkg -x /pkg/myovpn_${VERSION}_${{ matrix.deb_arch }}.deb /tmp/debroot && /tmp/debroot/usr/bin/myovpn --version"
-          docker run --rm -v "$PWD/dist:/pkg" fedora:41 bash -c "rpm -qip /pkg/myovpn-${VERSION}.${{ matrix.rpm_arch }}.rpm && rpm2cpio /pkg/myovpn-${VERSION}.${{ matrix.rpm_arch }}.rpm | cpio -idm -D /tmp/rpmroot && /tmp/rpmroot/usr/bin/myovpn --version"
+          docker run --rm -v "$PWD/dist:/pkg" debian:trixie-slim bash -c "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y /pkg/myovpn_${VERSION}_${{ matrix.deb_arch }}.deb && myovpn --version"
+          docker run --rm -v "$PWD/dist:/pkg" fedora:41 bash -c "dnf install -y /pkg/myovpn-${VERSION}.${{ matrix.rpm_arch }}.rpm && myovpn --version"
 
       - name: Build AppImage
         env:
