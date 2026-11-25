@@ -279,8 +279,33 @@ jobs:
 
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          name: ${{ needs.meta.outputs.release_name }}
-          files: release-files/*
-          generate_release_notes: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REL_NAME: ${{ needs.meta.outputs.release_name }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            for attempt in 1 2 3 4 5; do
+              if gh release create "$TAG" --title "$REL_NAME" --generate-notes; then
+                break
+              fi
+              echo "gh release create failed (attempt $attempt), retrying in 10s..."
+              sleep 10
+            done
+          fi
+          for f in release-files/*; do
+            ok=0
+            for attempt in 1 2 3 4 5; do
+              if gh release upload "$TAG" "$f" --clobber; then
+                echo "Uploaded $(basename "$f")"
+                ok=1
+                break
+              fi
+              echo "Upload failed for $(basename "$f") (attempt $attempt), retrying in 5s..."
+              sleep 5
+            done
+            if [ "$ok" -ne 1 ]; then
+              echo "Failed to upload $(basename "$f") after 5 attempts" >&2
+              exit 1
+            fi
+          done
