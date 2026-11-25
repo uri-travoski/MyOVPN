@@ -46,6 +46,8 @@ android {
             val ksPath = System.getenv("ANDROID_KEYSTORE_PATH")
             if (!ksPath.isNullOrBlank() && file(ksPath).exists()) {
                 signingConfig = signingConfigs.getByName("release")
+            } else {
+                signingConfig = signingConfigs.getByName("debug")
             }
         }
     }

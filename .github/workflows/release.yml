@@ -61,7 +61,7 @@ jobs:
       - name: Install packaging tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl rpm flatpak flatpak-builder fuse libfuse2 desktop-file-utils
+          sudo apt-get install -y curl rpm flatpak flatpak-builder desktop-file-utils
           NFPM_VER="2.41.1"
           curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VER}/nfpm_${NFPM_VER}_Linux_${{ matrix.appimage_arch }}.tar.gz" | sudo tar -xz -C /usr/local/bin nfpm
           curl -fsSL "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${{ matrix.appimage_arch }}.AppImage" -o /tmp/appimagetool
@@ -105,7 +105,7 @@ jobs:
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install --user -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
           cp dist/myovpn ./myovpn
-          flatpak-builder --user --force-clean --repo=flatpak-repo build-flatpak packaging/flatpak/io.github.uri_travoski.MyOVPN.yml
+          flatpak-builder --user --force-clean --disable-rofiles-fuse --repo=flatpak-repo build-flatpak packaging/flatpak/io.github.uri_travoski.MyOVPN.yml
           flatpak build-bundle flatpak-repo "dist/MyOVPN-${VERSION}-${{ matrix.flatpak_arch }}.flatpak" io.github.uri_travoski.MyOVPN
 
       - uses: actions/upload-artifact@v4
@@ -222,7 +222,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon --max-workers=2 || ./gradlew assembleRelease --no-daemon --max-workers=2
 
       - name: Stage APK
         env:
