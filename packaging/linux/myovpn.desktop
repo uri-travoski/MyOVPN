@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=MyOVPN
+GenericName=VPN Tray Client
+Comment=One-click free OpenVPN tray app with per-app routing
+Exec=/usr/bin/myovpn
+Icon=myovpn
+Terminal=false
+Categories=Network;Utility;
+StartupNotify=false
+X-GNOME-Autostart-enabled=true

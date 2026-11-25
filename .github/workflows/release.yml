@@ -1,0 +1,284 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  meta:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      release_name: ${{ steps.ver.outputs.release_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: ver
+        run: |
+          VER="$(tr -d '[:space:]' < VERSION)"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          REL="v$(echo "$VER" | cut -d. -f1,2)"
+          echo "release_name=$REL" >> "$GITHUB_OUTPUT"
+
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - run: go test -v ./...
+
+  linux:
+    needs: [meta, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            goarch: amd64
+            deb_arch: amd64
+            rpm_arch: x86_64
+            appimage_arch: x86_64
+            flatpak_arch: x86_64
+          - runner: ubuntu-24.04-arm
+            goarch: arm64
+            deb_arch: arm64
+            rpm_arch: aarch64
+            appimage_arch: aarch64
+            flatpak_arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl rpm flatpak flatpak-builder fuse libfuse2 desktop-file-utils
+          NFPM_VER="2.41.1"
+          curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VER}/nfpm_${NFPM_VER}_Linux_${{ matrix.appimage_arch }}.tar.gz" | sudo tar -xz -C /usr/local/bin nfpm
+          curl -fsSL "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${{ matrix.appimage_arch }}.AppImage" -o /tmp/appimagetool
+          chmod +x /tmp/appimagetool
+          sudo mv /tmp/appimagetool /usr/local/bin/appimagetool
+
+      - name: Build Linux binary
+        env:
+          VER: ${{ needs.meta.outputs.version }}
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=${{ matrix.goarch }} go build \
+            -ldflags "-s -w -X github.com/uri-travoski/MyOVPN/internal/version.Version=${VER}" \
+            -o dist/myovpn ./cmd/myovpn
+          ./dist/myovpn --version
+
+      - name: Build .deb and .rpm via nFPM
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          NFPM_ARCH=${{ matrix.deb_arch }} nfpm package -f packaging/nfpm/nfpm.yaml -p deb -t "dist/myovpn_${VERSION}_${{ matrix.deb_arch }}.deb"
+          NFPM_ARCH=${{ matrix.rpm_arch }} nfpm package -f packaging/nfpm/nfpm.yaml -p rpm -t "dist/myovpn-${VERSION}.${{ matrix.rpm_arch }}.rpm"
+
+      - name: Verify .deb and .rpm in clean containers
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          docker run --rm -v "$PWD/dist:/pkg" debian:trixie-slim bash -c "dpkg-deb -I /pkg/myovpn_${VERSION}_${{ matrix.deb_arch }}.deb && dpkg -x /pkg/myovpn_${VERSION}_${{ matrix.deb_arch }}.deb /tmp/debroot && /tmp/debroot/usr/bin/myovpn --version"
+          docker run --rm -v "$PWD/dist:/pkg" fedora:41 bash -c "rpm -qip /pkg/myovpn-${VERSION}.${{ matrix.rpm_arch }}.rpm && rpm2cpio /pkg/myovpn-${VERSION}.${{ matrix.rpm_arch }}.rpm | cpio -idm -D /tmp/rpmroot && /tmp/rpmroot/usr/bin/myovpn --version"
+
+      - name: Build AppImage
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          bash packaging/appimage/build-appimage.sh "${VERSION}" "${{ matrix.appimage_arch }}" ./dist/myovpn
+
+      - name: Build Flatpak bundle
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+          cp dist/myovpn ./myovpn
+          flatpak-builder --user --force-clean --repo=flatpak-repo build-flatpak packaging/flatpak/io.github.uri_travoski.MyOVPN.yml
+          flatpak build-bundle flatpak-repo "dist/MyOVPN-${VERSION}-${{ matrix.flatpak_arch }}.flatpak" io.github.uri_travoski.MyOVPN
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.goarch }}
+          path: |
+            dist/*.deb
+            dist/*.rpm
+            dist/*.AppImage
+            dist/*.flatpak
+
+  windows:
+    needs: [meta, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            goarch: amd64
+            suffix: x64
+            ovpn_msi_arch: amd64
+          - runner: windows-11-arm
+            goarch: arm64
+            suffix: arm64
+            ovpn_msi_arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build Windows binary
+        shell: pwsh
+        env:
+          VER: ${{ needs.meta.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $env:CGO_ENABLED = "0"
+          $env:GOOS = "windows"
+          $env:GOARCH = "${{ matrix.goarch }}"
+          go build -ldflags "-s -w -H=windowsgui -X github.com/uri-travoski/MyOVPN/internal/version.Version=$env:VER" -o dist/myovpn.exe ./cmd/myovpn
+          go build -ldflags "-s -w -X github.com/uri-travoski/MyOVPN/internal/version.Version=$env:VER" -o dist/myovpn-cli.exe ./cmd/myovpn
+          ./dist/myovpn-cli.exe --version
+
+      - name: Stage OpenVPN 2.6 + Wintun binaries
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build/openvpn-win | Out-Null
+          $msiUrl = "https://swupdate.openvpn.org/community/releases/OpenVPN-2.6.12-I001-${{ matrix.ovpn_msi_arch }}.msi"
+          Invoke-WebRequest -Uri $msiUrl -OutFile build/openvpn.msi
+          msiexec /a "$PWD\build\openvpn.msi" /qn TARGETDIR="$PWD\build\ovpn-extract" | Out-Null
+          $binDir = Get-ChildItem -Path "build\ovpn-extract" -Recurse -Filter "openvpn.exe" | Select-Object -First 1 -ExpandProperty DirectoryName
+          if (-not $binDir) { throw "Failed to locate extracted openvpn.exe" }
+          Copy-Item "$binDir\*" "build\openvpn-win\" -Recurse -Force
+          $wintunUrl = "https://www.wintun.net/builds/wintun-0.14.1.zip"
+          Invoke-WebRequest -Uri $wintunUrl -OutFile build/wintun.zip
+          Expand-Archive build/wintun.zip -DestinationPath build/wintun-extract -Force
+          $wtArch = if ("${{ matrix.goarch }}" -eq "arm64") { "arm64" } else { "amd64" }
+          Copy-Item "build\wintun-extract\wintun\bin\$wtArch\wintun.dll" "build\openvpn-win\wintun.dll" -Force
+
+      - name: Build Portable ZIP
+        shell: pwsh
+        env:
+          VER: ${{ needs.meta.outputs.version }}
+        run: |
+          $stage = "build\portable-${{ matrix.suffix }}"
+          New-Item -ItemType Directory -Force -Path "$stage\openvpn" | Out-Null
+          Copy-Item "dist\myovpn.exe" "$stage\myovpn.exe"
+          Copy-Item "build\openvpn-win\*" "$stage\openvpn\" -Recurse -Force
+          Compress-Archive -Path "$stage\*" -DestinationPath "dist\MyOVPN-$env:VER-portable-${{ matrix.suffix }}.zip" -Force
+
+      - name: Build Inno Setup Installer
+        shell: pwsh
+        env:
+          VER: ${{ needs.meta.outputs.version }}
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+          }
+          & $iscc "/DAppVersion=$env:VER" "/DArchSuffix=${{ matrix.suffix }}" "/DBinaryPath=$PWD\dist\myovpn.exe" "/DOpenVPNDir=$PWD\build\openvpn-win" packaging\windows\myovpn.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.suffix }}
+          path: |
+            dist/MyOVPN-Setup-*.exe
+            dist/MyOVPN-*-portable-*.zip
+
+  android:
+    needs: [meta, test]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Decode Android Keystore if provided
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/myovpn-release.jks"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/myovpn-release.jks" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build Android Release APK
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Stage APK
+        env:
+          VER: ${{ needs.meta.outputs.version }}
+        run: |
+          mkdir -p dist
+          APK="$(find android/app/build/outputs/apk/release -name '*.apk' | head -n 1)"
+          cp "$APK" "dist/MyOVPN-${VER}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: dist/MyOVPN-*.apk
+
+  release:
+    needs: [meta, linux, windows, android]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-files
+          merge-multiple: true
+
+      - name: Verify all 13 release artifacts and generate SHA256SUMS.txt
+        env:
+          VER: ${{ needs.meta.outputs.version }}
+        run: |
+          cd release-files
+          EXPECTED=(
+            "myovpn_${VER}_amd64.deb"
+            "myovpn_${VER}_arm64.deb"
+            "myovpn-${VER}.x86_64.rpm"
+            "myovpn-${VER}.aarch64.rpm"
+            "MyOVPN-${VER}-x86_64.AppImage"
+            "MyOVPN-${VER}-aarch64.AppImage"
+            "MyOVPN-${VER}-x86_64.flatpak"
+            "MyOVPN-${VER}-aarch64.flatpak"
+            "MyOVPN-Setup-${VER}-x64.exe"
+            "MyOVPN-Setup-${VER}-arm64.exe"
+            "MyOVPN-${VER}-portable-x64.zip"
+            "MyOVPN-${VER}-portable-arm64.zip"
+            "MyOVPN-${VER}.apk"
+          )
+          for f in "${EXPECTED[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "MISSING RELEASE ARTIFACT: $f" >&2
+              exit 1
+            fi
+          done
+          sha256sum "${EXPECTED[@]}" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ needs.meta.outputs.release_name }}
+          files: release-files/*
+          generate_release_notes: true

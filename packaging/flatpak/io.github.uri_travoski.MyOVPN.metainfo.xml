@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.uri_travoski.MyOVPN</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>MyOVPN</name>
+  <summary>One-click free OpenVPN tray app by country</summary>
+  <description>
+    <p>
+      MyOVPN sits in the system tray, fetches and ranks free OpenVPN servers by
+      country, and automatically fails over when a volunteer server drops.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.uri_travoski.MyOVPN.desktop</launchable>
+  <url type="homepage">https://github.com/uri-travoski/MyOVPN</url>
+  <releases>
+    <release version="1.1.0" date="2026-11-25"/>
+  </releases>
+</component>

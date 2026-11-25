@@ -1,0 +1,2 @@
+-keep class net.openvpn.ovpn3.** { *; }
+-keep class com.tim.openvpn.** { *; }

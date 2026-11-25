@@ -1,0 +1,74 @@
+name: "myovpn"
+arch: "${NFPM_ARCH}"
+platform: "linux"
+version: "${VERSION}"
+section: "net"
+priority: "optional"
+maintainer: "Sam <uri-travoski@users.noreply.github.com>"
+description: |
+  MyOVPN is a lightweight one-click free OpenVPN tray application with automatic
+  failover and Linux per-app network namespace routing.
+homepage: "https://github.com/uri-travoski/MyOVPN"
+license: "GPL-3.0"
+
+depends:
+  - openvpn
+  - nftables
+  - iproute2
+
+recommends:
+  - network-manager-openvpn
+
+contents:
+  - src: ./dist/myovpn
+    dst: /usr/bin/myovpn
+    file_info:
+      mode: 0755
+  - src: ./packaging/linux/myovpnd.service
+    dst: /etc/systemd/system/myovpnd.service
+    file_info:
+      mode: 0644
+  - src: ./packaging/linux/myovpn.desktop
+    dst: /etc/xdg/autostart/myovpn.desktop
+    file_info:
+      mode: 0644
+  - src: ./packaging/linux/myovpn.desktop
+    dst: /usr/share/applications/myovpn.desktop
+    file_info:
+      mode: 0644
+  - src: ./assets/icons/myovpn.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/myovpn.svg
+    file_info:
+      mode: 0644
+  - src: ./assets/icons/myovpn-brand-256.png
+    dst: /usr/share/icons/hicolor/256x256/apps/myovpn.png
+    file_info:
+      mode: 0644
+  - src: ./assets/icons/myovpn-brand-48.png
+    dst: /usr/share/icons/hicolor/48x48/apps/myovpn.png
+    file_info:
+      mode: 0644
+  - src: ./assets/icons/myovpn-brand-32.png
+    dst: /usr/share/icons/hicolor/32x32/apps/myovpn.png
+    file_info:
+      mode: 0644
+  - src: ./assets/icons/myovpn-brand-24.png
+    dst: /usr/share/icons/hicolor/24x24/apps/myovpn.png
+    file_info:
+      mode: 0644
+  - src: ./assets/icons/myovpn-brand-22.png
+    dst: /usr/share/icons/hicolor/22x22/apps/myovpn.png
+    file_info:
+      mode: 0644
+
+overrides:
+  rpm:
+    depends:
+      - openvpn
+      - nftables
+      - iproute
+      - NetworkManager-openvpn
+
+scripts:
+  postinstall: ./packaging/linux/postinstall.sh
+  preremove: ./packaging/linux/preremove.sh

@@ -1,0 +1,48 @@
+# Credentials & secrets (NEVER commit)
+credentials.md
+*.pem
+*.key
+*.jks
+*.keystore
+.env
+
+# Build outputs & binaries
+dist/
+build/
+out/
+bin/
+*.exe
+*.deb
+*.rpm
+*.AppImage
+*.flatpak
+*.apk
+*.zip
+*.tar.gz
+SHA256SUMS.txt
+/myovpn
+/myovpnd
+/vpntray
+
+# Go
+*.test
+coverage.out
+
+# Android / Gradle
+android/.gradle/
+android/build/
+android/*/build/
+android/local.properties
+android/.idea/
+*.iml
+
+# Flatpak & AppImage staging
+.flatpak-builder/
+repo/
+AppDir/
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+*~
+*.swp

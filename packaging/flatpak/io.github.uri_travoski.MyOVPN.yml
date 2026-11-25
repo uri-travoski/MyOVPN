@@ -1,0 +1,32 @@
+app-id: io.github.uri_travoski.MyOVPN
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: myovpn
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.portal.Background
+  - --system-talk-name=org.freedesktop.NetworkManager
+  - --filesystem=xdg-config/myovpn:create
+  - --filesystem=xdg-cache/myovpn:create
+  - --filesystem=xdg-state/myovpn:create
+
+modules:
+  - name: myovpn
+    buildsystem: simple
+    build-commands:
+      - mkdir -p /app/bin /app/share/applications /app/share/metainfo /app/share/icons/hicolor/scalable/apps /app/share/icons/hicolor/256x256/apps
+      - install -Dm755 myovpn /app/bin/myovpn
+      - install -Dm644 packaging/linux/myovpn.desktop /app/share/applications/io.github.uri_travoski.MyOVPN.desktop
+      - sed -i 's|^Exec=/usr/bin/myovpn|Exec=myovpn|; s|^Icon=myovpn|Icon=io.github.uri_travoski.MyOVPN|' /app/share/applications/io.github.uri_travoski.MyOVPN.desktop
+      - install -Dm644 packaging/flatpak/io.github.uri_travoski.MyOVPN.metainfo.xml /app/share/metainfo/io.github.uri_travoski.MyOVPN.metainfo.xml
+      - install -Dm644 assets/icons/myovpn.svg /app/share/icons/hicolor/scalable/apps/io.github.uri_travoski.MyOVPN.svg
+      - install -Dm644 assets/icons/myovpn-brand-256.png /app/share/icons/hicolor/256x256/apps/io.github.uri_travoski.MyOVPN.png
+    sources:
+      - type: dir
+        path: ../..
