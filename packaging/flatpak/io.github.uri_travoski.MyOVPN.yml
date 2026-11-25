@@ -14,7 +14,6 @@ finish-args:
   - --system-talk-name=org.freedesktop.NetworkManager
   - --filesystem=xdg-config/myovpn:create
   - --filesystem=xdg-cache/myovpn:create
-  - --filesystem=xdg-state/myovpn:create
 
 modules:
   - name: myovpn
