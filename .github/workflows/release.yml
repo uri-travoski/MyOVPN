@@ -281,12 +281,13 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
           REL_NAME: ${{ needs.meta.outputs.release_name }}
         run: |
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
+          if ! gh release view "$TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
             for attempt in 1 2 3 4 5; do
-              if gh release create "$TAG" --title "$REL_NAME" --generate-notes; then
+              if gh release create "$TAG" --repo "$GH_REPO" --title "$REL_NAME" --generate-notes; then
                 break
               fi
               echo "gh release create failed (attempt $attempt), retrying in 10s..."
@@ -296,7 +297,7 @@ jobs:
           for f in release-files/*; do
             ok=0
             for attempt in 1 2 3 4 5; do
-              if gh release upload "$TAG" "$f" --clobber; then
+              if gh release upload "$TAG" "$f" --repo "$GH_REPO" --clobber; then
                 echo "Uploaded $(basename "$f")"
                 ok=1
                 break
