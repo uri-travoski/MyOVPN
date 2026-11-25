@@ -97,6 +97,21 @@ class MyOVPNClient(
         return true
     }
 
+    override fun tun_builder_set_layer(layer: Int): Boolean = layer == 3
+
+    override fun tun_builder_set_remote_address(address: String?, ipv6: Boolean): Boolean = true
+
+    override fun tun_builder_exclude_route(
+        address: String?,
+        prefixLength: Int,
+        metric: Int,
+        ipv6: Boolean
+    ): Boolean = true
+
+    override fun tun_builder_set_proxy_http(host: String?, port: Int): Boolean = true
+
+    override fun tun_builder_set_proxy_https(host: String?, port: Int): Boolean = true
+
     override fun tun_builder_set_session_name(name: String?): Boolean {
         if (!name.isNullOrBlank()) builder?.setSession(name)
         return true

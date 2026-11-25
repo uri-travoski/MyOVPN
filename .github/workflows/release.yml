@@ -286,7 +286,7 @@ jobs:
           REL_NAME: ${{ needs.meta.outputs.release_name }}
         run: |
           if ! gh release view "$TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
-            for attempt in 1 2 3 4 5; do
+            for attempt in 1 2 3 4 5 6 7 8; do
               if gh release create "$TAG" --repo "$GH_REPO" --title "$REL_NAME" --generate-notes; then
                 break
               fi
@@ -296,7 +296,7 @@ jobs:
           fi
           for f in release-files/*; do
             ok=0
-            for attempt in 1 2 3 4 5; do
+            for attempt in 1 2 3 4 5 6 7 8; do
               if gh release upload "$TAG" "$f" --repo "$GH_REPO" --clobber; then
                 echo "Uploaded $(basename "$f")"
                 ok=1
