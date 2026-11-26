@@ -37,6 +37,7 @@ type App struct {
 	autoLaunched  bool
 	prevState     core.ConnectionState
 	lastNoticeSeq uint64
+	lastCfgMod    time.Time
 	updateURL     string
 	stopCh        chan struct{}
 
@@ -52,7 +53,9 @@ type App struct {
 	mServerMenu     *systray.MenuItem
 	mServerSlots    [5]*systray.MenuItem
 	mNextServer     *systray.MenuItem
-	mLaunchChrome   *systray.MenuItem
+	mLaunchMenu     *systray.MenuItem
+	mLaunchSlots    [10]*systray.MenuItem
+	mLaunchNote     *systray.MenuItem
 	mDisconnect     *systray.MenuItem
 	mSettings       *systray.MenuItem
 	mModePerApp     *systray.MenuItem
@@ -153,9 +156,17 @@ func (a *App) buildMenu() {
 	}
 
 	a.mNextServer = systray.AddMenuItem("Next server", "Switch to next candidate server")
-	a.mLaunchChrome = systray.AddMenuItem("Launch Chrome (VPN)", "Open isolated Chrome inside the VPN namespace")
+	a.mLaunchMenu = systray.AddMenuItem("Launch in VPN", "Open an isolated app inside the VPN namespace")
+	for i := 0; i < len(a.mLaunchSlots); i++ {
+		slot := a.mLaunchMenu.AddSubMenuItem("", "")
+		slot.Hide()
+		a.mLaunchSlots[i] = slot
+	}
+	a.mLaunchMenu.AddSubMenuItem("─────────", "").Disable()
+	a.mLaunchNote = a.mLaunchMenu.AddSubMenuItem("Note: running apps outside VPN won't move in", "Close an existing browser profile first to route it through VPN")
+	a.mLaunchNote.Disable()
 	if runtime.GOOS == "windows" || config.IsFlatpak() {
-		a.mLaunchChrome.Hide()
+		a.mLaunchMenu.Hide()
 	}
 	a.mDisconnect = systray.AddMenuItem("Disconnect", "Stop the VPN tunnel")
 	a.mDisconnect.Disable()
@@ -209,6 +220,16 @@ func (a *App) pollLoop() {
 }
 
 func (a *App) pollOnce() {
+	if info, err := os.Stat(a.cfgPath); err == nil {
+		if info.ModTime().After(a.lastCfgMod) {
+			if reloaded, err := config.Load(a.cfgPath); err == nil {
+				a.mu.Lock()
+				a.cfg = reloaded
+				a.lastCfgMod = info.ModTime()
+				a.mu.Unlock()
+			}
+		}
+	}
 	snap, _ := a.backend.Status()
 	a.applyStatus(snap)
 }
@@ -251,12 +272,16 @@ func (a *App) applyStatus(snap core.StatusSnapshot) {
 		}
 	}
 
-	// Auto-launch Chrome (VPN) on transition into Connected in per-app mode
+	// Auto-launch first configured VPN app on transition into Connected in per-app mode
 	if snap.State == core.StateConnected && a.prevState != core.StateConnected {
 		if a.cfg.AutoLaunchApp && snap.Mode == "per-app" && !a.autoLaunched && runtime.GOOS == "linux" {
 			a.autoLaunched = true
+			appID := "chrome"
+			if len(a.cfg.Apps) > 0 && a.cfg.Apps[0].ID != "" {
+				appID = a.cfg.Apps[0].ID
+			}
 			go func() {
-				_ = a.backend.LaunchApp("chrome")
+				_ = a.backend.LaunchApp(appID)
 			}()
 		}
 	}
@@ -307,16 +332,25 @@ func (a *App) applyStatus(snap core.StatusSnapshot) {
 		a.mNextServer.Disable()
 	}
 
-	// Update mode checkboxes
+	// Update mode checkboxes & Launch menu slots
 	if snap.Mode == "per-app" {
 		a.mModePerApp.Check()
 		a.mModeSystemWide.Uncheck()
 		if runtime.GOOS == "linux" && !config.IsFlatpak() {
-			a.mLaunchChrome.Show()
+			a.mLaunchMenu.Show()
 		}
 	} else if snap.Mode == "system-wide" {
 		a.mModePerApp.Uncheck()
 		a.mModeSystemWide.Check()
+	}
+	for i := 0; i < len(a.mLaunchSlots); i++ {
+		if i < len(a.cfg.Apps) {
+			app := a.cfg.Apps[i]
+			a.mLaunchSlots[i].SetTitle(app.Name)
+			a.mLaunchSlots[i].Show()
+		} else {
+			a.mLaunchSlots[i].Hide()
+		}
 	}
 
 	// Update Windows helper menu visibility
@@ -458,6 +492,29 @@ func (a *App) eventLoop() {
 		}()
 	}
 
+	for i := 0; i < len(a.mLaunchSlots); i++ {
+		idx := i
+		go func() {
+			for {
+				select {
+				case <-a.stopCh:
+					return
+				case <-a.mLaunchSlots[idx].ClickedCh:
+					a.mu.Lock()
+					if idx < len(a.cfg.Apps) {
+						app := a.cfg.Apps[idx]
+						a.mu.Unlock()
+						if err := a.backend.LaunchApp(app.ID); err != nil {
+							notify.Send("MyOVPN", fmt.Sprintf("Could not launch %s: %s", app.Name, err.Error()))
+						}
+					} else {
+						a.mu.Unlock()
+					}
+				}
+			}
+		}()
+	}
+
 	for {
 		select {
 		case <-a.stopCh:
@@ -485,12 +542,6 @@ func (a *App) eventLoop() {
 			go func() {
 				_ = a.backend.NextServer()
 				a.pollOnce()
-			}()
-		case <-a.mLaunchChrome.ClickedCh:
-			go func() {
-				if err := a.backend.LaunchApp("chrome"); err != nil {
-					notify.Send("MyOVPN", "Could not launch Chrome (VPN): "+err.Error())
-				}
 			}()
 		case <-a.mDisconnect.ClickedCh:
 			go func() {

@@ -69,7 +69,7 @@ func runNetnsLaunch(args []string) int {
 	binPath, err := exec.LookPath(*cmdName)
 	if err != nil {
 		// Common Linux fallback for Chromium/Chrome variants
-		for _, alt := range []string{"google-chrome-stable", "chromium", "chromium-browser"} {
+		for _, alt := range []string{"chromium", "/usr/lib/chromium/chromium", "chromium-browser", "/usr/lib/chromium-browser/chromium-browser", "google-chrome-stable", "google-chrome"} {
 			if p, e := exec.LookPath(alt); e == nil {
 				binPath = p
 				break

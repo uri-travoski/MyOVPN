@@ -13,6 +13,15 @@ func TestConfigSaveLoadAndNormalize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load default: %v", err)
 	}
+	hasChromium := false
+	for _, a := range cfg.Apps {
+		if a.ID == "chromium" {
+			hasChromium = true
+		}
+	}
+	if !hasChromium {
+		t.Fatalf("expected default Apps to include chromium, got %+v", cfg.Apps)
+	}
 	cfg.MaxProfiles = 99
 	cfg.RecordRecentCountry("jp")
 	cfg.RecordRecentCountry("us")

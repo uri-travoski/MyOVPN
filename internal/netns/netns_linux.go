@@ -423,8 +423,8 @@ func LaunchAppAsUser(uid, gid uint32, env []string, app config.AppEntry) error {
 		return err
 	}
 
-	// Ensure Chrome profile directory exists and belongs to the user with distinct VPN theme color
-	if app.ID == "chrome" {
+	// Ensure isolated browser profile directory exists and belongs to the user with distinct VPN theme color
+	if app.ID == "chrome" || app.ID == "chromium" {
 		for _, a := range app.Args {
 			if strings.HasPrefix(a, "--user-data-dir=") {
 				profDir := strings.TrimPrefix(a, "--user-data-dir=")

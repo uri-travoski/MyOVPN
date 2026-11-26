@@ -133,6 +133,12 @@ func (s *Server) dispatch(ctx context.Context, caller CallerInfo, req Request) R
 		return Response{OK: true, Status: &snap}
 
 	case CmdLaunch:
+		// Refresh user config on launch so newly added [[apps]] entries work immediately
+		if s.cfgPath != "" {
+			if cfg, err := config.Load(s.cfgPath); err == nil {
+				s.ctrl.ReloadConfig(cfg)
+			}
+		}
 		env := FilterSessionEnv(req.SessionEnv)
 		if err := s.ctrl.LaunchApp(caller.UID, caller.GID, env, req.AppID); err != nil {
 			return Response{OK: false, Error: err.Error()}

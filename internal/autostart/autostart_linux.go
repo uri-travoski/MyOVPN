@@ -116,7 +116,7 @@ func InstallChromeVPNLauncher() error {
 	} else if p, err := os.Executable(); err == nil && p != "" {
 		execPath = p
 	}
-	content := fmt.Sprintf(`[Desktop Entry]
+	chromeDesktop := fmt.Sprintf(`[Desktop Entry]
 Type=Application
 Name=Chrome (VPN)
 Comment=Launch Google Chrome inside the MyOVPN VPN namespace
@@ -126,5 +126,18 @@ Terminal=false
 Categories=Network;WebBrowser;
 StartupWMClass=ChromeVPN
 `, execPath)
-	return os.WriteFile(filepath.Join(appsDir, "myovpn-chrome.desktop"), []byte(content), 0o644)
+	if err := os.WriteFile(filepath.Join(appsDir, "myovpn-chrome.desktop"), []byte(chromeDesktop), 0o644); err != nil {
+		return err
+	}
+	chromiumDesktop := fmt.Sprintf(`[Desktop Entry]
+Type=Application
+Name=Chromium (VPN)
+Comment=Launch Chromium inside the MyOVPN VPN namespace
+Exec=%q launch chromium
+Icon=chromium
+Terminal=false
+Categories=Network;WebBrowser;
+StartupWMClass=ChromiumVPN
+`, execPath)
+	return os.WriteFile(filepath.Join(appsDir, "myovpn-chromium.desktop"), []byte(chromiumDesktop), 0o644)
 }

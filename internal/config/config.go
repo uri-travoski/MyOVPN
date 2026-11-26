@@ -104,15 +104,25 @@ func defaultApps(cfgDir string) []AppEntry {
 	if runtime.GOOS == "windows" {
 		return []AppEntry{}
 	}
-	profileDir := filepath.Join(cfgDir, "chrome-profile")
 	return []AppEntry{
 		{
 			ID:      "chrome",
 			Name:    "Chrome (VPN)",
 			Command: "google-chrome",
 			Args: []string{
-				"--user-data-dir=" + profileDir,
+				"--user-data-dir=" + filepath.Join(cfgDir, "chrome-profile"),
 				"--class=ChromeVPN",
+				"--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+				"--no-first-run",
+			},
+		},
+		{
+			ID:      "chromium",
+			Name:    "Chromium (VPN)",
+			Command: "/usr/lib/chromium/chromium",
+			Args: []string{
+				"--user-data-dir=" + filepath.Join(cfgDir, "chromium-profile"),
+				"--class=ChromiumVPN",
 				"--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
 				"--no-first-run",
 			},

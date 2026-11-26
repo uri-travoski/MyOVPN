@@ -193,7 +193,11 @@ class MainActivity : AppCompatActivity() {
     private fun showAllowedAppsDialog() {
         val pm = packageManager
         val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            .filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 || it.packageName == "com.android.chrome" }
+            .filter {
+                (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 ||
+                    it.packageName == "com.android.chrome" ||
+                    it.packageName == "org.chromium.chrome"
+            }
             .sortedBy { pm.getApplicationLabel(it).toString() }
 
         val names = apps.map { "${pm.getApplicationLabel(it)} (${it.packageName})" }.toTypedArray()
