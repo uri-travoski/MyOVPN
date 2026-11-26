@@ -54,7 +54,8 @@ type App struct {
 	mServerSlots    [5]*systray.MenuItem
 	mNextServer     *systray.MenuItem
 	mLaunchMenu     *systray.MenuItem
-	mLaunchSlots    [10]*systray.MenuItem
+	mLaunchSlots    [15]*systray.MenuItem
+	mAddApp         *systray.MenuItem
 	mLaunchNote     *systray.MenuItem
 	mDisconnect     *systray.MenuItem
 	mSettings       *systray.MenuItem
@@ -65,6 +66,7 @@ type App struct {
 	mAutoLaunch     *systray.MenuItem
 	mEnablePerApp   *systray.MenuItem
 	mRemoveHelper   *systray.MenuItem
+	mManageApps     *systray.MenuItem
 	mEditSettings   *systray.MenuItem
 	mOpenLog        *systray.MenuItem
 	mPrivacyNotice  *systray.MenuItem
@@ -163,6 +165,7 @@ func (a *App) buildMenu() {
 		a.mLaunchSlots[i] = slot
 	}
 	a.mLaunchMenu.AddSubMenuItem("─────────", "").Disable()
+	a.mAddApp = a.mLaunchMenu.AddSubMenuItem("Add / Manage VPN apps…", "Pick a desktop shortcut or executable to route through VPN")
 	a.mLaunchNote = a.mLaunchMenu.AddSubMenuItem("Note: running apps outside VPN won't move in", "Close an existing browser profile first to route it through VPN")
 	a.mLaunchNote.Disable()
 	if runtime.GOOS == "windows" || config.IsFlatpak() {
@@ -195,6 +198,10 @@ func (a *App) buildMenu() {
 		a.mRemoveHelper.Hide()
 	}
 
+	a.mManageApps = a.mSettings.AddSubMenuItem("Manage VPN apps…", "Add or remove apps from the Launch in VPN list")
+	if runtime.GOOS == "windows" || config.IsFlatpak() {
+		a.mManageApps.Hide()
+	}
 	a.mEditSettings = a.mSettings.AddSubMenuItem("Edit settings file…", "Open config.toml")
 	a.mOpenLog = a.mSettings.AddSubMenuItem("Open log", "View rotating MyOVPN logs")
 	a.mPrivacyNotice = a.mSettings.AddSubMenuItem("Privacy notice", "Show security & privacy reminder")
@@ -607,6 +614,10 @@ func (a *App) eventLoop() {
 					a.pollOnce()
 				}
 			}()
+		case <-a.mAddApp.ClickedCh:
+			go a.handleManageApps()
+		case <-a.mManageApps.ClickedCh:
+			go a.handleManageApps()
 		case <-a.mEditSettings.ClickedCh:
 			_ = config.Save(a.cfgPath, a.cfg)
 			openPath(a.cfgPath)
@@ -669,4 +680,32 @@ func (a *App) handleCheckUpdate() {
 
 	a.mCheckUpdate.SetTitle(fmt.Sprintf("Up to date (v%s) — Check again", res.CurrentVersion))
 	notify.Send("MyOVPN", fmt.Sprintf("You are running the latest version (v%s).", res.CurrentVersion))
+}
+
+func (a *App) handleManageApps() {
+	a.mu.Lock()
+	current := append([]config.AppEntry(nil), a.cfg.Apps...)
+	a.mu.Unlock()
+
+	updated, saved, err := RunManageAppsDialog(current)
+	if err != nil {
+		notify.Send("MyOVPN", "Could not open app picker: "+err.Error())
+		return
+	}
+	if !saved {
+		return
+	}
+
+	a.mu.Lock()
+	a.cfg.Apps = updated
+	cfgCopy := *a.cfg
+	a.mu.Unlock()
+
+	if err := config.Save(a.cfgPath, &cfgCopy); err != nil {
+		notify.Send("MyOVPN", "Failed to save config.toml: "+err.Error())
+		return
+	}
+	_ = a.backend.ReloadConfig()
+	a.pollOnce()
+	notify.Send("MyOVPN", fmt.Sprintf("Updated VPN app list (%d app(s)).", len(updated)))
 }

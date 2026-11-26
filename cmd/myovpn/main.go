@@ -58,6 +58,23 @@ func main() {
 			_ = netns.CleanupAll(ctx)
 			_ = nm.NewManager(controller.DefaultRegistryPath(), 3).CleanupAll(ctx)
 			return
+		case "apps", "manage-apps":
+			cfgPath := config.ConfigPath()
+			cfg, _ := config.Load(cfgPath)
+			updated, saved, err := tray.RunManageAppsDialog(cfg.Apps)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			if saved {
+				cfg.Apps = updated
+				if err := config.Save(cfgPath, cfg); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					os.Exit(1)
+				}
+				_, _ = ipc.Call(ipc.Request{Command: ipc.CmdReloadConfig})
+			}
+			return
 		case "status", "list", "refresh", "connect", "next", "disconnect", "launch", "set-mode", "quit":
 			os.Exit(runCLI(os.Args[1:]))
 		}
