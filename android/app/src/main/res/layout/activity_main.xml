@@ -42,6 +42,14 @@
                 android:text="Tap a country below to connect"
                 android:textSize="13sp" />
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvVersion"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="v1.1.1"
+            android:textSize="12sp"
+            android:alpha="0.7" />
     </LinearLayout>
 
     <LinearLayout
@@ -101,8 +109,8 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginEnd="6dp"
-            android:text="Refresh List" />
+            android:layout_marginEnd="4dp"
+            android:text="Refresh" />
 
         <Button
             android:id="@+id/btnLogs"
@@ -110,8 +118,17 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginStart="6dp"
+            android:layout_marginHorizontal="4dp"
             android:text="Logs" />
+
+        <Button
+            android:id="@+id/btnSettings"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:text="Settings" />
     </LinearLayout>
 
     <TextView

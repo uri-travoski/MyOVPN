@@ -21,8 +21,7 @@ jobs:
         run: |
           VER="$(tr -d '[:space:]' < VERSION)"
           echo "version=$VER" >> "$GITHUB_OUTPUT"
-          REL="v$(echo "$VER" | cut -d. -f1,2)"
-          echo "release_name=$REL" >> "$GITHUB_OUTPUT"
+          echo "release_name=v${VER}" >> "$GITHUB_OUTPUT"
 
   test:
     runs-on: ubuntu-24.04

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
 import android.widget.ArrayAdapter
@@ -25,6 +26,7 @@ import com.myovpn.app.R
 import com.myovpn.app.core.AppPrefs
 import com.myovpn.app.core.LogStore
 import com.myovpn.app.core.ServerRepository
+import com.myovpn.app.core.UpdateChecker
 import com.myovpn.app.model.ConnectionState
 import com.myovpn.app.model.CountrySummary
 import com.myovpn.app.vpn.MyOVPNService
@@ -72,14 +74,18 @@ class MainActivity : AppCompatActivity() {
         val ivIcon = findViewById<ImageView>(R.id.ivStatusIcon)
         val tvTitle = findViewById<TextView>(R.id.tvStatusTitle)
         val tvSub = findViewById<TextView>(R.id.tvStatusSub)
+        val tvVersion = findViewById<TextView>(R.id.tvVersion)
         val btnNext = findViewById<Button>(R.id.btnNextServer)
         val btnDisc = findViewById<Button>(R.id.btnDisconnect)
         val swPerApp = findViewById<MaterialSwitch>(R.id.swPerApp)
         val btnPickApps = findViewById<Button>(R.id.btnPickApps)
         val btnRefresh = findViewById<Button>(R.id.btnRefresh)
         val btnLogs = findViewById<Button>(R.id.btnLogs)
+        val btnSettings = findViewById<Button>(R.id.btnSettings)
         val tvSource = findViewById<TextView>(R.id.tvSourceInfo)
         val lvCountries = findViewById<ListView>(R.id.lvCountries)
+
+        tvVersion.text = "v${appVersionName()}"
 
         swPerApp.isChecked = prefs.perAppMode
         swPerApp.setOnCheckedChangeListener { _, checked ->
@@ -89,6 +95,7 @@ class MainActivity : AppCompatActivity() {
         btnPickApps.setOnClickListener { showAllowedAppsDialog() }
         btnRefresh.setOnClickListener { loadCountries(force = true, tvSource = tvSource, lv = lvCountries) }
         btnLogs.setOnClickListener { showLogsDialog() }
+        btnSettings.setOnClickListener { showSettingsDialog() }
         btnNext.setOnClickListener {
             startService(Intent(this, MyOVPNService::class.java).apply { action = MyOVPNService.ACTION_NEXT })
         }
@@ -203,6 +210,76 @@ class MainActivity : AppCompatActivity() {
                 prefs.allowedPackages = current
             }
             .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun appVersionName(): String {
+        return runCatching {
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "1.1.1"
+        }.getOrDefault("1.1.1")
+    }
+
+    private fun showSettingsDialog() {
+        val ver = appVersionName()
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 28, 48, 12)
+        }
+        val tvVer = TextView(this).apply {
+            text = "Version: v$ver"
+            textSize = 15f
+            setPadding(0, 0, 0, 16)
+        }
+        val tvUpdateStatus = TextView(this).apply {
+            text = "Tap 'Check for updates' to check GitHub for a newer release."
+            textSize = 13f
+            setPadding(0, 0, 0, 20)
+        }
+        val btnCheck = Button(this).apply {
+            text = "Check for updates"
+        }
+        val btnDownload = Button(this).apply {
+            text = "Download update"
+            visibility = android.view.View.GONE
+        }
+        val btnApps = Button(this).apply {
+            text = "Allowed apps (${prefs.allowedPackages.size})"
+            setOnClickListener { showAllowedAppsDialog() }
+        }
+        container.addView(tvVer)
+        container.addView(tvUpdateStatus)
+        container.addView(btnCheck)
+        container.addView(btnDownload)
+        container.addView(btnApps)
+
+        btnCheck.setOnClickListener {
+            btnCheck.isEnabled = false
+            tvUpdateStatus.text = "Checking GitHub releases…"
+            lifecycleScope.launch {
+                val res = UpdateChecker.checkLatest(ver)
+                btnCheck.isEnabled = true
+                res.onSuccess { info ->
+                    if (info.updateAvailable) {
+                        tvUpdateStatus.text = "Update available: v${info.latestVersion} (current: v${info.currentVersion})"
+                        btnDownload.visibility = android.view.View.VISIBLE
+                        btnDownload.text = "Download v${info.latestVersion}"
+                        btnDownload.setOnClickListener {
+                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl)))
+                        }
+                    } else {
+                        tvUpdateStatus.text = "You are on the latest version (v${info.currentVersion})."
+                        btnDownload.visibility = android.view.View.GONE
+                    }
+                }.onFailure { err ->
+                    tvUpdateStatus.text = "Update check failed: ${err.message ?: "network error"}"
+                }
+            }
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Settings")
+            .setView(container)
+            .setPositiveButton("Close", null)
             .show()
     }
 

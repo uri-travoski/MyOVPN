@@ -1,6 +1,7 @@
 package tray
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"runtime"
@@ -14,6 +15,8 @@ import (
 	"github.com/uri-travoski/MyOVPN/internal/config"
 	"github.com/uri-travoski/MyOVPN/internal/core"
 	"github.com/uri-travoski/MyOVPN/internal/notify"
+	"github.com/uri-travoski/MyOVPN/internal/updater"
+	"github.com/uri-travoski/MyOVPN/internal/version"
 	"github.com/uri-travoski/MyOVPN/internal/winservice"
 )
 
@@ -34,6 +37,7 @@ type App struct {
 	autoLaunched  bool
 	prevState     core.ConnectionState
 	lastNoticeSeq uint64
+	updateURL     string
 	stopCh        chan struct{}
 
 	// Menu items
@@ -61,6 +65,8 @@ type App struct {
 	mEditSettings   *systray.MenuItem
 	mOpenLog        *systray.MenuItem
 	mPrivacyNotice  *systray.MenuItem
+	mVersion        *systray.MenuItem
+	mCheckUpdate    *systray.MenuItem
 	mQuit           *systray.MenuItem
 }
 
@@ -181,6 +187,10 @@ func (a *App) buildMenu() {
 	a.mEditSettings = a.mSettings.AddSubMenuItem("Edit settings file…", "Open config.toml")
 	a.mOpenLog = a.mSettings.AddSubMenuItem("Open log", "View rotating MyOVPN logs")
 	a.mPrivacyNotice = a.mSettings.AddSubMenuItem("Privacy notice", "Show security & privacy reminder")
+	a.mSettings.AddSubMenuItem("─────────", "").Disable()
+	a.mVersion = a.mSettings.AddSubMenuItem(fmt.Sprintf("Version: v%s", version.Version), "Installed MyOVPN version")
+	a.mVersion.Disable()
+	a.mCheckUpdate = a.mSettings.AddSubMenuItem("Check for updates…", "Check GitHub for the latest MyOVPN release")
 
 	a.mQuit = systray.AddMenuItem("Quit", "Disconnect and clean up profiles/namespace")
 }
@@ -556,9 +566,56 @@ func (a *App) eventLoop() {
 				"MyOVPN — Privacy Notice",
 				"Free public servers change your country; they don't make you private. Use for geo-access, stick to HTTPS sites, and never do banking through them. Note: apps already running outside the VPN namespace cannot be moved into it.",
 			)
+		case <-a.mCheckUpdate.ClickedCh:
+			go a.handleCheckUpdate()
 		case <-a.mQuit.ClickedCh:
 			systray.Quit()
 			return
 		}
 	}
+}
+
+func (a *App) handleCheckUpdate() {
+	a.mu.Lock()
+	existingURL := a.updateURL
+	a.mu.Unlock()
+	if existingURL != "" {
+		openPath(existingURL)
+		return
+	}
+
+	a.mCheckUpdate.SetTitle("Checking for updates…")
+	a.mCheckUpdate.Disable()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	res, err := updater.CheckLatest(ctx, nil, "", version.Version)
+
+	a.mCheckUpdate.Enable()
+	if err != nil {
+		a.mCheckUpdate.SetTitle("Check for updates…")
+		notify.Send("MyOVPN Update Check", "Could not check GitHub: "+err.Error())
+		return
+	}
+	if res.UpdateAvailable {
+		target := res.DownloadURL
+		if target == "" {
+			target = res.ReleaseURL
+		}
+		a.mu.Lock()
+		a.updateURL = target
+		a.mu.Unlock()
+		a.mCheckUpdate.SetTitle(fmt.Sprintf("Update available: v%s (Download)", res.LatestVersion))
+		notify.Send(
+			"MyOVPN Update Available",
+			fmt.Sprintf("v%s is available (current: v%s). Opening download…", res.LatestVersion, res.CurrentVersion),
+		)
+		if target != "" {
+			openPath(target)
+		}
+		return
+	}
+
+	a.mCheckUpdate.SetTitle(fmt.Sprintf("Up to date (v%s) — Check again", res.CurrentVersion))
+	notify.Send("MyOVPN", fmt.Sprintf("You are running the latest version (v%s).", res.CurrentVersion))
 }
