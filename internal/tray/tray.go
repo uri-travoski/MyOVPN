@@ -43,6 +43,7 @@ type App struct {
 
 	// Menu items
 	mStatus         *systray.MenuItem
+	mRefreshTop     *systray.MenuItem
 	mChooseCountry  *systray.MenuItem
 	mCountrySlots   [countriesPerPage]*systray.MenuItem
 	mPrevPage       *systray.MenuItem
@@ -134,6 +135,7 @@ func (a *App) buildMenu() {
 	a.mStatus.Disable()
 	systray.AddSeparator()
 
+	a.mRefreshTop = systray.AddMenuItem("🔄 Refresh list", "Fetch fresh server list")
 	a.mChooseCountry = systray.AddMenuItem("Choose country", "Connect to the best server in a country")
 	for i := 0; i < countriesPerPage; i++ {
 		slot := a.mChooseCountry.AddSubMenuItem("Loading…", "")
@@ -540,11 +542,10 @@ func (a *App) eventLoop() {
 			snap := a.snap
 			a.mu.Unlock()
 			a.applyStatus(snap)
+		case <-a.mRefreshTop.ClickedCh:
+			go a.handleRefresh()
 		case <-a.mRefresh.ClickedCh:
-			go func() {
-				snap, _ := a.backend.Refresh(true)
-				a.applyStatus(snap)
-			}()
+			go a.handleRefresh()
 		case <-a.mNextServer.ClickedCh:
 			go func() {
 				_ = a.backend.NextServer()
@@ -634,6 +635,25 @@ func (a *App) eventLoop() {
 			systray.Quit()
 			return
 		}
+	}
+}
+
+func (a *App) handleRefresh() {
+	a.mRefreshTop.SetTitle("Refreshing list…")
+	a.mRefreshTop.Disable()
+	a.mRefresh.SetTitle("Refreshing list…")
+	a.mRefresh.Disable()
+
+	snap, err := a.backend.Refresh(true)
+	a.applyStatus(snap)
+
+	a.mRefreshTop.SetTitle("🔄 Refresh list")
+	a.mRefreshTop.Enable()
+	a.mRefresh.SetTitle("🔄 Refresh list")
+	a.mRefresh.Enable()
+
+	if err == nil && a.cfg.Notifications {
+		notify.Send("MyOVPN", fmt.Sprintf("Server list refreshed (%d countries).", len(snap.Countries)))
 	}
 }
 
