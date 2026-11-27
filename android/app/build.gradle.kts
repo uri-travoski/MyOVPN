@@ -16,7 +16,7 @@ android {
         applicationId = "com.myovpn.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10103
+        versionCode = 10104
         versionName = appVersionName
 
         ndk {

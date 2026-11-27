@@ -22,23 +22,22 @@ OVPN_PATH = (
 )
 
 VARIANTS = {
-    "white": ("#FFFFFF", "#1E293B", "1.1"),
-    "green": ("#22C55E", "#0F172A", "0.9"),
-    "red": ("#EF4444", "#0F172A", "0.9"),
-    "brand": ("#EA7E20", "#1E293B", "0.6"),
+    "white": ("#FFFFFF", "none", "0"),
+    "green": ("#22C55E", "none", "0"),
+    "red": ("#EF4444", "none", "0"),
+    "brand": ("#EA7E20", "none", "0"),
 }
 
-LINUX_SIZES = [22, 24, 32, 48, 128, 256]
+LINUX_SIZES = [16, 22, 24, 32, 48, 128, 256]
 ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]
 
 
-def make_svg(fill: str, stroke: str, stroke_width: str, padded: bool = True) -> str:
-    # Pad viewBox slightly so thin dark outline is never clipped at edges
+def make_svg(fill: str, stroke: str, stroke_width: str, padded: bool = False) -> str:
     vb = "-1.2 -1.2 26.4 26.4" if padded else "0 0 24 24"
     return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}" width="256" height="256">\n'
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}" width="24" height="24">\n'
         f'  <path d="{OVPN_PATH}" fill="{fill}" stroke="{stroke}" '
-        f'stroke-width="{stroke_width}" stroke-linejoin="round" stroke-linecap="round"/>\n'
+        f'stroke-width="{stroke_width}" shape-rendering="geometricPrecision"/>\n'
         f'</svg>\n'
     )
 
@@ -49,6 +48,21 @@ def render_svg_to_png(svg_path: Path, png_path: Path, size: int) -> None:
         subprocess.run(cmd, check=True)
     except FileNotFoundError:
         subprocess.run(["distrobox", "enter", "devbox", "--", *cmd], check=True)
+    if size <= 24:
+        # Tighten subpixel alpha at small tray sizes so 16x16 edges look sharp instead of hazy
+        im = Image.open(png_path).convert("RGBA")
+        px = im.load()
+        for y in range(im.height):
+            for x in range(im.width):
+                r, g, b, a = px[x, y]
+                if a < 36:
+                    a = 0
+                elif a > 190:
+                    a = 255
+                else:
+                    a = int((a - 36) * 255 / (190 - 36))
+                px[x, y] = (r, g, b, a)
+        im.save(png_path)
 
 
 def build_ico(png_paths: dict[int, Path], ico_path: Path) -> None:
@@ -61,21 +75,16 @@ def build_ico(png_paths: dict[int, Path], ico_path: Path) -> None:
     )
 
 
-def write_android_vector(path: Path, fill: str, stroke: str) -> None:
+def write_android_vector(path: Path, fill: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     xml = f"""<vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="26.4"
-    android:viewportHeight="26.4">
-    <group android:translateX="1.2" android:translateY="1.2">
-        <path
-            android:fillColor="{fill}"
-            android:strokeColor="{stroke}"
-            android:strokeWidth="0.9"
-            android:strokeLineJoin="round"
-            android:pathData="{OVPN_PATH}" />
-    </group>
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="{fill}"
+        android:pathData="{OVPN_PATH}" />
 </vector>
 """
     path.write_text(xml, encoding="utf-8")
@@ -99,21 +108,21 @@ def main() -> None:
         ico_out = ASSETS_DIR / f"myovpn-{name}.ico"
         build_ico(png_by_size, ico_out)
 
-        # Embed 32px PNG (and 64px for HiDPI) + ICO for tray runtime
+        # Embed sharp 16x16 PNG + ICO for tray runtime
         if name in ("white", "green", "red"):
-            (EMBED_DIR / f"tray-{name}.png").write_bytes((ASSETS_DIR / f"myovpn-{name}-32.png").read_bytes())
+            (EMBED_DIR / f"tray-{name}.png").write_bytes((ASSETS_DIR / f"myovpn-{name}-16.png").read_bytes())
             (EMBED_DIR / f"tray-{name}.ico").write_bytes(ico_out.read_bytes())
 
     # Canonical app icons
-    (ASSETS_DIR / "myovpn.svg").write_text(make_svg("#EA7E20", "#1E293B", "0.6", padded=False), encoding="utf-8")
+    (ASSETS_DIR / "myovpn.svg").write_text(make_svg("#EA7E20", "none", "0", padded=False), encoding="utf-8")
     (ASSETS_DIR / "myovpn.ico").write_bytes((ASSETS_DIR / "myovpn-brand.ico").read_bytes())
     (ASSETS_DIR / "myovpn.png").write_bytes((ASSETS_DIR / "myovpn-brand-256.png").read_bytes())
 
     # Android vector drawables
-    write_android_vector(ANDROID_RES / "drawable" / "ic_vpn_white.xml", "#FFFFFF", "#1E293B")
-    write_android_vector(ANDROID_RES / "drawable" / "ic_vpn_green.xml", "#22C55E", "#0F172A")
-    write_android_vector(ANDROID_RES / "drawable" / "ic_vpn_red.xml", "#EF4444", "#0F172A")
-    write_android_vector(ANDROID_RES / "drawable" / "ic_launcher_foreground.xml", "#FFFFFF", "#1E293B")
+    write_android_vector(ANDROID_RES / "drawable" / "ic_vpn_white.xml", "#FFFFFF")
+    write_android_vector(ANDROID_RES / "drawable" / "ic_vpn_green.xml", "#22C55E")
+    write_android_vector(ANDROID_RES / "drawable" / "ic_vpn_red.xml", "#EF4444")
+    write_android_vector(ANDROID_RES / "drawable" / "ic_launcher_foreground.xml", "#FFFFFF")
     print("Generated all MyOVPN icons successfully.")
 
 
