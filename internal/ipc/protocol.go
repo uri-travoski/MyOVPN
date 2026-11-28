@@ -40,21 +40,43 @@ type CallerInfo struct {
 	GID uint32
 }
 
+// AllowedSessionEnvKeys lists the safe desktop session environment keys forwarded
+// across X11 and Wayland sessions when launching per-app processes.
+var AllowedSessionEnvKeys = []string{
+	"DISPLAY",
+	"WAYLAND_DISPLAY",
+	"XAUTHORITY",
+	"XDG_SESSION_TYPE",
+	"XDG_CURRENT_DESKTOP",
+	"XDG_SESSION_DESKTOP",
+	"DESKTOP_SESSION",
+	"DBUS_SESSION_BUS_ADDRESS",
+	"XDG_RUNTIME_DIR",
+	"XDG_DATA_DIRS",
+	"XDG_CONFIG_HOME",
+	"XDG_CACHE_HOME",
+	"XDG_STATE_HOME",
+	"GDK_BACKEND",
+	"QT_QPA_PLATFORM",
+	"QT_QPA_PLATFORMTHEME",
+	"QT_WAYLAND_DISABLE_WINDOWDECORATION",
+	"MOZ_ENABLE_WAYLAND",
+	"ELECTRON_OZONE_PLATFORM_HINT",
+	"OZONE_PLATFORM",
+	"GTK_THEME",
+	"PULSE_SERVER",
+	"PIPEWIRE_REMOTE",
+	"HOME",
+	"USER",
+	"LANG",
+	"LC_ALL",
+	"PATH",
+}
+
 // FilterSessionEnv copies only safe GUI session environment keys from the caller.
 func FilterSessionEnv(in map[string]string) []string {
-	allowed := []string{
-		"DISPLAY",
-		"WAYLAND_DISPLAY",
-		"XAUTHORITY",
-		"DBUS_SESSION_BUS_ADDRESS",
-		"XDG_RUNTIME_DIR",
-		"HOME",
-		"USER",
-		"LANG",
-		"PATH",
-	}
 	var out []string
-	for _, k := range allowed {
+	for _, k := range AllowedSessionEnvKeys {
 		if v, ok := in[k]; ok && v != "" {
 			out = append(out, k+"="+v)
 		}

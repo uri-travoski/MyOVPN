@@ -14,15 +14,20 @@ import (
 
 func TestFilterSessionEnvDropsUnsafeKeys(t *testing.T) {
 	in := map[string]string{
-		"DISPLAY":                  ":0",
-		"WAYLAND_DISPLAY":          "wayland-0",
-		"LD_PRELOAD":               "/tmp/evil.so",
-		"BASH_ENV":                 "/tmp/evil.sh",
-		"DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+		"DISPLAY":                      ":0",
+		"WAYLAND_DISPLAY":              "wayland-0",
+		"XDG_SESSION_TYPE":             "wayland",
+		"XDG_CURRENT_DESKTOP":          "GNOME",
+		"MOZ_ENABLE_WAYLAND":           "1",
+		"ELECTRON_OZONE_PLATFORM_HINT": "auto",
+		"QT_QPA_PLATFORM":              "wayland;xcb",
+		"LD_PRELOAD":                   "/tmp/evil.so",
+		"BASH_ENV":                     "/tmp/evil.sh",
+		"DBUS_SESSION_BUS_ADDRESS":     "unix:path=/run/user/1000/bus",
 	}
 	out := FilterSessionEnv(in)
-	if len(out) != 3 {
-		t.Fatalf("expected 3 safe env vars, got %v", out)
+	if len(out) != 8 {
+		t.Fatalf("expected 8 safe env vars, got %v", out)
 	}
 	for _, entry := range out {
 		if entry == "LD_PRELOAD=/tmp/evil.so" || entry == "BASH_ENV=/tmp/evil.sh" {

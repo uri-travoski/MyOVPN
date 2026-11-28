@@ -8,4 +8,5 @@ Icon=myovpn
 Terminal=false
 Categories=Network;Utility;
 StartupNotify=false
+StartupWMClass=myovpn
 X-GNOME-Autostart-enabled=true

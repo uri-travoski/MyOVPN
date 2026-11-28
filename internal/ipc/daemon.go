@@ -232,19 +232,8 @@ func (e *RemoteError) Error() string { return e.Msg }
 
 // CurrentSessionEnv captures safe GUI environment variables from the user session.
 func CurrentSessionEnv() map[string]string {
-	keys := []string{
-		"DISPLAY",
-		"WAYLAND_DISPLAY",
-		"XAUTHORITY",
-		"DBUS_SESSION_BUS_ADDRESS",
-		"XDG_RUNTIME_DIR",
-		"HOME",
-		"USER",
-		"LANG",
-		"PATH",
-	}
-	out := make(map[string]string, len(keys))
-	for _, k := range keys {
+	out := make(map[string]string, len(AllowedSessionEnvKeys))
+	for _, k := range AllowedSessionEnvKeys {
 		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
 			out[k] = v
 		}

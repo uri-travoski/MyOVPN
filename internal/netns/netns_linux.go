@@ -433,6 +433,8 @@ func LaunchAppAsUser(uid, gid uint32, env []string, app config.AppEntry) error {
 		}
 	}
 
+	launchEnv, launchArgs := PrepareLaunchEnvAndArgs(env, app)
+
 	args := []string{
 		"netns", "exec", config.NetnsName,
 		exe, "_netns-launch",
@@ -441,10 +443,10 @@ func LaunchAppAsUser(uid, gid uint32, env []string, app config.AppEntry) error {
 		"--cmd", app.Command,
 		"--",
 	}
-	args = append(args, app.Args...)
+	args = append(args, launchArgs...)
 
 	cmd := exec.Command("ip", args...)
-	cmd.Env = env
+	cmd.Env = launchEnv
 	// Detach so closing daemon doesn't kill user's browser unexpectedly unless quit
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
@@ -452,6 +454,66 @@ func LaunchAppAsUser(uid, gid uint32, env []string, app config.AppEntry) error {
 	}
 	go func() { _ = cmd.Wait() }()
 	return nil
+}
+
+// PrepareLaunchEnvAndArgs normalizes session environment and browser flags so apps work
+// seamlessly under X11, Xwayland, and native Wayland inside the isolated network namespace.
+func PrepareLaunchEnvAndArgs(env []string, app config.AppEntry) ([]string, []string) {
+	outEnv := append([]string(nil), env...)
+	outArgs := append([]string(nil), app.Args...)
+
+	envMap := make(map[string]string, len(outEnv))
+	for _, entry := range outEnv {
+		if k, v, ok := strings.Cut(entry, "="); ok {
+			envMap[k] = v
+		}
+	}
+
+	setIfMissing := func(k, v string) {
+		if strings.TrimSpace(envMap[k]) == "" {
+			envMap[k] = v
+			outEnv = append(outEnv, k+"="+v)
+		}
+	}
+
+	isWayland := strings.TrimSpace(envMap["WAYLAND_DISPLAY"]) != "" ||
+		strings.EqualFold(strings.TrimSpace(envMap["XDG_SESSION_TYPE"]), "wayland")
+
+	if isWayland {
+		setIfMissing("XDG_SESSION_TYPE", "wayland")
+		setIfMissing("ELECTRON_OZONE_PLATFORM_HINT", "auto")
+		setIfMissing("MOZ_ENABLE_WAYLAND", "1")
+		setIfMissing("QT_QPA_PLATFORM", "wayland;xcb")
+
+		if isChromiumCommand(app.Command) && !hasOzoneFlag(outArgs) {
+			outArgs = append(outArgs, "--ozone-platform-hint=auto")
+		}
+	} else if strings.TrimSpace(envMap["DISPLAY"]) != "" {
+		setIfMissing("XDG_SESSION_TYPE", "x11")
+	}
+
+	return outEnv, outArgs
+}
+
+func isChromiumCommand(command string) bool {
+	base := strings.ToLower(filepath.Base(strings.TrimSpace(command)))
+	switch base {
+	case "chromium", "chromium-browser", "google-chrome", "google-chrome-stable",
+		"brave", "brave-browser", "vivaldi", "vivaldi-stable",
+		"microsoft-edge", "microsoft-edge-stable", "opera":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasOzoneFlag(args []string) bool {
+	for _, a := range args {
+		if strings.HasPrefix(a, "--ozone-platform") {
+			return true
+		}
+	}
+	return false
 }
 
 func ensureChromeVPNProfile(profDir string, uid, gid int) error {

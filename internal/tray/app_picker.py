@@ -55,7 +55,13 @@ def run_gtk(payload: dict):
     import gi
 
     gi.require_version("Gtk", "3.0")
-    from gi.repository import Gtk
+    from gi.repository import GLib, Gtk
+
+    if not Gtk.init_check(None)[0]:
+        raise RuntimeError("GTK could not initialize display")
+
+    GLib.set_prgname("myovpn")
+    GLib.set_application_name("MyOVPN")
 
     shortcuts = payload.get("shortcuts") or []
     current = [
@@ -69,6 +75,7 @@ def run_gtk(payload: dict):
     result = {"saved": False, "apps": current}
 
     win = Gtk.Window(title="MyOVPN — Manage VPN Apps")
+    win.set_icon_name("myovpn")
     win.set_default_size(720, 560)
     win.set_border_width(12)
     win.set_position(Gtk.WindowPosition.CENTER)
@@ -416,7 +423,15 @@ def main():
     try:
         res = run_gtk(payload)
     except Exception:
-        res = run_tk(payload)
+        # Standard Tkinter requires an X11/Xwayland DISPLAY and fails under pure Wayland.
+        if not os.environ.get("DISPLAY"):
+            sys.stderr.write("NO_PYTHON_GUI: GTK3 unavailable and no X11 DISPLAY for Tkinter\n")
+            sys.exit(3)
+        try:
+            res = run_tk(payload)
+        except Exception as exc:
+            sys.stderr.write(f"NO_PYTHON_GUI: {exc}\n")
+            sys.exit(3)
     json.dump(res, sys.stdout)
 
 

@@ -148,7 +148,7 @@ func (b *InProcessBackend) Disconnect() error {
 }
 
 func (b *InProcessBackend) LaunchApp(appID string) error {
-	return b.ctrl.LaunchApp(0, 0, nil, appID)
+	return b.ctrl.LaunchApp(0, 0, ipc.FilterSessionEnv(ipc.CurrentSessionEnv()), appID)
 }
 
 func (b *InProcessBackend) SetMode(mode string) error {

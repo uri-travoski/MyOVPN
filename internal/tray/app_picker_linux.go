@@ -6,7 +6,9 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -33,6 +35,10 @@ type pickerOutput struct {
 
 // RunManageAppsDialog opens the native GTK3/Tkinter GUI app picker and returns the updated Apps list.
 func RunManageAppsDialog(current []config.AppEntry) ([]config.AppEntry, bool, error) {
+	if strings.TrimSpace(os.Getenv("DISPLAY")) == "" && strings.TrimSpace(os.Getenv("WAYLAND_DISPLAY")) == "" {
+		return nil, false, fmt.Errorf("no GUI display available (DISPLAY and WAYLAND_DISPLAY are unset)")
+	}
+
 	in := pickerInput{
 		Shortcuts:   apps.ScanDesktopShortcuts(),
 		CurrentApps: current,
@@ -49,68 +55,85 @@ func RunManageAppsDialog(current []config.AppEntry) ([]config.AppEntry, bool, er
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
-			return nil, false, fmt.Errorf("app picker failed: %v (%s)", err, strings.TrimSpace(stderr.String()))
-		}
-		var out pickerOutput
-		if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
-			return nil, false, err
-		}
-		if !out.Saved {
-			return nil, false, nil
-		}
-
-		// Rebuild AppEntry list preserving existing IDs where unchanged
-		existingByID := make(map[string]config.AppEntry, len(current))
-		for _, a := range current {
-			existingByID[a.ID] = a
-		}
-		var updated []config.AppEntry
-		for _, item := range out.Apps {
-			cmdPath, args, err := apps.ParseCommandLine(item.CommandLine)
-			if err != nil {
-				continue
+			// Exit code 3 means Python lacked usable GTK3/Tk bindings; fall through to zenity/kdialog.
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) || exitErr.ExitCode() != 3 {
+				return nil, false, fmt.Errorf("app picker failed: %v (%s)", err, strings.TrimSpace(stderr.String()))
 			}
-			if item.ID != "" {
-				if prev, ok := existingByID[item.ID]; ok {
-					prev.Name = item.Name
-					prev.Command = cmdPath
-					prev.Args = args
-					updated = append(updated, prev)
+		} else {
+			var out pickerOutput
+			if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+				return nil, false, err
+			}
+			if !out.Saved {
+				return nil, false, nil
+			}
+
+			// Rebuild AppEntry list preserving existing IDs where unchanged
+			existingByID := make(map[string]config.AppEntry, len(current))
+			for _, a := range current {
+				existingByID[a.ID] = a
+			}
+			var updated []config.AppEntry
+			for _, item := range out.Apps {
+				cmdPath, args, err := apps.ParseCommandLine(item.CommandLine)
+				if err != nil {
 					continue
 				}
+				if item.ID != "" {
+					if prev, ok := existingByID[item.ID]; ok {
+						prev.Name = item.Name
+						prev.Command = cmdPath
+						prev.Args = args
+						updated = append(updated, prev)
+						continue
+					}
+				}
+				entry, err := apps.BuildAppEntry(item.Name, item.CommandLine, updated)
+				if err == nil {
+					updated = append(updated, entry)
+				}
 			}
-			entry, err := apps.BuildAppEntry(item.Name, item.CommandLine, updated)
-			if err == nil {
-				updated = append(updated, entry)
-			}
+			return updated, true, nil
 		}
-		return updated, true, nil
 	}
 
-	// Zenity fallback when python3 is absent
+	// Native file-dialog fallbacks for Wayland/X11 when python3-gi/tkinter are unavailable
 	if _, err := exec.LookPath("zenity"); err == nil {
 		chosenBytes, err := exec.Command("zenity", "--file-selection", "--title=Select App Executable or .desktop Shortcut").Output()
 		if err != nil {
 			return nil, false, nil
 		}
-		chosen := strings.TrimSpace(string(chosenBytes))
-		if chosen == "" {
-			return nil, false, nil
-		}
-		name := ""
-		cmdLine := chosen
-		if strings.HasSuffix(strings.ToLower(chosen), ".desktop") {
-			if sc, err := apps.ParseDesktopFile(chosen); err == nil {
-				name = sc.Name
-				cmdLine = sc.CommandLine
-			}
-		}
-		entry, err := apps.BuildAppEntry(name, cmdLine, current)
-		if err != nil {
-			return nil, false, err
-		}
-		return append(append([]config.AppEntry{}, current...), entry), true, nil
+		return appendSelectedAppPath(strings.TrimSpace(string(chosenBytes)), current)
 	}
 
-	return nil, false, fmt.Errorf("no GUI toolkit (python3-gi, tkinter, or zenity) found")
+	if _, err := exec.LookPath("kdialog"); err == nil {
+		home, _ := os.UserHomeDir()
+		chosenBytes, err := exec.Command("kdialog", "--getopenfilename", home, "--title", "Select App Executable or .desktop Shortcut").Output()
+		if err != nil {
+			return nil, false, nil
+		}
+		return appendSelectedAppPath(strings.TrimSpace(string(chosenBytes)), current)
+	}
+
+	return nil, false, fmt.Errorf("no GUI toolkit (python3-gi, tkinter, zenity, or kdialog) found")
+}
+
+func appendSelectedAppPath(chosen string, current []config.AppEntry) ([]config.AppEntry, bool, error) {
+	if chosen == "" {
+		return nil, false, nil
+	}
+	name := ""
+	cmdLine := chosen
+	if strings.HasSuffix(strings.ToLower(chosen), ".desktop") {
+		if sc, err := apps.ParseDesktopFile(chosen); err == nil {
+			name = sc.Name
+			cmdLine = sc.CommandLine
+		}
+	}
+	entry, err := apps.BuildAppEntry(name, cmdLine, current)
+	if err != nil {
+		return nil, false, err
+	}
+	return append(append([]config.AppEntry{}, current...), entry), true, nil
 }
