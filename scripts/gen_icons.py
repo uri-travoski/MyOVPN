@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Generate MyOVPN tray and launcher icons (PNG, ICO, SVG, Android XML) from the OpenVPN SVG path."""
 
-import io
 import os
 import subprocess
+import tempfile
 from pathlib import Path
 from PIL import Image
 
@@ -32,8 +32,16 @@ LINUX_SIZES = [16, 22, 24, 32, 48, 128, 256]
 ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]
 
 
-def make_svg(fill: str, stroke: str, stroke_width: str, padded: bool = False) -> str:
-    vb = "-1.2 -1.2 26.4 26.4" if padded else "0 0 24 24"
+# Linux SNI applets (Cinnamon xapp-status, KDE, GNOME) scale IconPixmap up/down to the panel's
+# full-color icon slot (24px on Mint Cinnamon, while symbolic icons are 16px). Rendering the
+# glyph centered in a -6..30 (36x36) viewBox at 48x48 keeps the visible glyph ~16px inside a
+# 24px slot with smooth 2x supersampled edges and zero upscaling pixelation.
+TRAY_VIEWBOX = "-6 -6 36 36"
+TRAY_PNG_SIZE = 48
+
+
+def make_svg(fill: str, stroke: str, stroke_width: str, padded: bool = False, viewbox: str | None = None) -> str:
+    vb = viewbox or ("-1.2 -1.2 26.4 26.4" if padded else "0 0 24 24")
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}" width="24" height="24">\n'
         f'  <path d="{OVPN_PATH}" fill="{fill}" stroke="{stroke}" '
@@ -48,21 +56,6 @@ def render_svg_to_png(svg_path: Path, png_path: Path, size: int) -> None:
         subprocess.run(cmd, check=True)
     except FileNotFoundError:
         subprocess.run(["distrobox", "enter", "devbox", "--", *cmd], check=True)
-    if size <= 24:
-        # Tighten subpixel alpha at small tray sizes so 16x16 edges look sharp instead of hazy
-        im = Image.open(png_path).convert("RGBA")
-        px = im.load()
-        for y in range(im.height):
-            for x in range(im.width):
-                r, g, b, a = px[x, y]
-                if a < 36:
-                    a = 0
-                elif a > 190:
-                    a = 255
-                else:
-                    a = int((a - 36) * 255 / (190 - 36))
-                px[x, y] = (r, g, b, a)
-        im.save(png_path)
 
 
 def build_ico(png_paths: dict[int, Path], ico_path: Path) -> None:
@@ -108,9 +101,12 @@ def main() -> None:
         ico_out = ASSETS_DIR / f"myovpn-{name}.ico"
         build_ico(png_by_size, ico_out)
 
-        # Embed sharp 16x16 PNG + ICO for tray runtime
+        # Embed smooth padded 48x48 PNG (renders ~16px glyph inside 24px Cinnamon tray slot) + ICO for Windows
         if name in ("white", "green", "red"):
-            (EMBED_DIR / f"tray-{name}.png").write_bytes((ASSETS_DIR / f"myovpn-{name}-16.png").read_bytes())
+            with tempfile.TemporaryDirectory(dir=ASSETS_DIR) as tmpdir:
+                tray_svg = Path(tmpdir) / f"tray-{name}.svg"
+                tray_svg.write_text(make_svg(fill, stroke, sw, viewbox=TRAY_VIEWBOX), encoding="utf-8")
+                render_svg_to_png(tray_svg, EMBED_DIR / f"tray-{name}.png", TRAY_PNG_SIZE)
             (EMBED_DIR / f"tray-{name}.ico").write_bytes(ico_out.read_bytes())
 
     # Canonical app icons
